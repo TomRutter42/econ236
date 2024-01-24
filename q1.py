@@ -327,20 +327,106 @@ def gmm(theta, m_empirical, ages):
     m_theoretical_vec = np.column_stack(m_theoretical[np.tril_indices(m_theoretical.shape[0])]).transpose()
     m_empirical_vec =  np.column_stack(m_empirical[np.tril_indices(m_empirical.shape[0])]).transpose()
 
-    # Make weighting matrix:
-
-    if type(weight) == str  and weight == "identity":
-        weight = np.identity(len(m_theoretical_vec))
-    elif type(weight) is np.ndarray:
-        weight = weight # matrix given
-    else: 
-        weight = np.identity(len(m_theoretical_vec))
-
     # Take difference between moments
     mt_me = m_theoretical_vec - m_empirical_vec
     objective = mt_me.transpose() @ mt_me
 
     return objective
+
+
+
+# Estimate on our simulated data. 
+
+# Initialize
+rho = 0.9
+sigma_sq_alpha = 0.05
+sigma_sq_eta = 0.2
+sigma_sq_ups = 0.1
+theta0 = np.array([rho, sigma_sq_ups, sigma_sq_eta, sigma_sq_alpha])
+
+ages = np.sort(sim_data.time.unique().astype(int))
+
+## Vectors to store parameter estimates in 
+
+rho_vec = np.zeros(20)
+sigma_sq_alpha_vec = np.zeros(20)
+sigma_sq_eta_vec = np.zeros(20)
+sigma_sq_ups_vec = np.zeros(20)
+
+for run in range(20):
+
+    # Subset sim_data_all to the run we are on
+    sim_data = sim_data_all[sim_data_all.run == run]
+
+    # Calculate the covariances: 
+
+    for tp in time_pairs:
+
+        # Produce a vector containing the product of y at tp[0] and y at tp[1] for every person 
+        # so the first entry is y at tp[0] for person 0 times y at tp[1] for person 0
+        # the second entry is y at tp[0] for person 1 times y at tp[1] for person 1
+        # etc
+        y_prod = np.multiply(sim_data.loc[sim_data['time'] == tp[0], 'y'].values, sim_data.loc[sim_data['time'] == tp[1], 'y'].values)
+        # print(y_prod)
+        # take the mean of y_prod
+        y_prod_mean = np.mean(y_prod)
+
+        # put cov in the right place in the covariance matrix
+        # cov_mat_sim[tp[0], tp[1]] = y_prod_mean
+        cov_mat_sim[tp[1], tp[0]] = y_prod_mean
+
+    # Run GMM
+        
+    gmm_estimate = minimize(gmm, theta0,  method='nelder-mead', args=(cov_mat_sim, ages))
+
+    # Extract esimates and print
+    params = gmm_estimate.x
+
+    param_names = ["rho", "sigma_sq_ups", "sigma_sq_eta", "sigma_sq_alpha"]
+    output_text = "GMM Estimates:\n"
+    for i,j in enumerate(param_names):
+        output_text +=  j +": " + str(np.round(params[i], 4) ) +  "\n"
+
+    print(output_text)
+
+    # Store the estimates in the vectors
+
+    rho_vec[run] = params[0]
+    sigma_sq_ups_vec[run] = params[1]
+    sigma_sq_eta_vec[run] = params[2]
+    sigma_sq_alpha_vec[run] = params[3]
+
+# Plot and save a histogram of our estimates for each parameter 
+
+plt.clf()
+plt.hist(rho_vec)
+## vertical line at 0.95 
+plt.axvline(x=0.95, color = "red")
+plt.savefig("C:/Users/tomru/Dropbox (Personal)/GitHub/econ236/rho.png")
+plt.clf()
+plt.hist(sigma_sq_ups_vec)
+## vertical line at 0.1
+plt.axvline(x=0.2, color = "red")
+plt.savefig("C:/Users/tomru/Dropbox (Personal)/GitHub/econ236/sigma_sq_ups.png")
+plt.clf()
+plt.hist(sigma_sq_eta_vec)
+## vertical line at 0.2
+plt.axvline(x=0.15, color = "red")
+plt.savefig("C:/Users/tomru/Dropbox (Personal)/GitHub/econ236/sigma_sq_eta.png")
+plt.clf()
+plt.hist(sigma_sq_alpha_vec)
+## vertical line at 0.15
+plt.axvline(x=0.1, color = "red")
+plt.savefig("C:/Users/tomru/Dropbox (Personal)/GitHub/econ236/sigma_sq_alpha.png")
+plt.clf()
+
+
+    
+
+
+
+
+
 
 # # Remove NA
 # residuals_data = resid_income_df.query("resid.notnull()", engine = 'python')
